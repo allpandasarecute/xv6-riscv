@@ -32,8 +32,8 @@ void main() {
 		userinit();  // first user process
 
 		// tests
-		// pr_msg("System started\n");
-		// pr_msg("You have %d seocnds to live\n", 10);
+		// pr_msg(0, "System started\n");
+		// pr_msg(0, "You have %d seocnds to live\n", 10);
 
 		__sync_synchronize();
 		started = 1;

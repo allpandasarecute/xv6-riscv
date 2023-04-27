@@ -5,6 +5,7 @@
 #include "spinlock.h"
 #include "proc.h"
 #include "defs.h"
+#include "dmesg.h"
 
 struct cpu cpus[NCPU];
 
@@ -461,6 +462,8 @@ scheduler(void)
         p->state = RUNNING;
         c->proc = p;
         swtch(&c->context, &p->context);
+
+        // pr_msg(2, "swtch: %d %s", p->pid, p->name);
 
         // Process is done running for now.
         // It should have changed its p->state before coming back.

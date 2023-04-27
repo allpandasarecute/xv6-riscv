@@ -2,7 +2,7 @@
 #include "kernel/stat.h"
 #include "user/user.h"
 
-#define BUF_SIZE 12000
+#define BUF_SIZE 1500
 
 int main() {
 	char buf[BUF_SIZE];

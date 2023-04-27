@@ -10,13 +10,14 @@
 #include "stdarg.h"
 #include "proc.h"
 
-#define BUF_SIZE 12000
+#define BUF_SIZE 1000
 
 static const char numerals[] = "0123456789abcdef";
 
 static char buf[BUF_SIZE];
 static struct spinlock msg_lock;
-static const char *prefix = "[", *postfix = "]\n";
+static const char *prefix = "[", *postfix = "] ";
+static int flags[] = { 1, 1, 1, 1};
 static int front = 0, top = 0, words = 0;
 
 void msg_init() {
@@ -106,6 +107,13 @@ void pushback_fmt_str(const char *fmt, va_list va_list) {
 	va_end(va_list);
 }
 
+void pushback_str(const char *str, int len) {
+    for (int i = 0; i < len; i++) {
+        buf[top++] = str[i];
+        top = (top + 1) % BUF_SIZE;
+    }
+}
+
 uint64 sys_dmesg(void) {
 	acquire(&msg_lock);
 
@@ -136,8 +144,12 @@ uint64 sys_dmesg(void) {
 	}
 }
 
-void pr_msg(const char *fmt, ...) {
+void pr_msg(int t, const char *fmt, ...) {
 	acquire(&msg_lock);
+    if (t >= 0 && t < 4 && !flags[t]) {
+        release(&msg_lock);
+        return;
+    }
 	acquire(&tickslock);
 
 	int cur_ticks = ticks;
@@ -157,4 +169,13 @@ void pr_msg(const char *fmt, ...) {
 	++words;
 
 	release(&msg_lock);
+}
+
+uint64 sys_flags(void) {
+    acquire(&msg_lock);
+    argint(0, &flags[1]);
+    argint(1, &flags[2]);
+    argint(2, &flags[3]);
+    release(&msg_lock);
+    return 0;
 }
