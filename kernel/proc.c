@@ -420,7 +420,7 @@ void scheduler(void) {
 				c->proc = p;
 				swtch(&c->context, &p->context);
 
-				// pr_msg(2, "swtch: %d %s", p->pid, p->name);
+				pr_msg(2, "Switch: %d %s", p->pid, p->name);
 
 				// Process is done running for now.
 				// It should have changed its p->state before coming back.

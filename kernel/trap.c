@@ -186,7 +186,7 @@ int devintr() {
 		if (irq)
 			plic_complete(irq);
 
-		// pr_msg(1, "inter: %d", irq);
+		pr_msg(1, "Interrupt: %d", irq);
 
 		return 1;
 	} else if (scause == 0x8000000000000001L) {
