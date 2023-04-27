@@ -32,8 +32,9 @@ exec(char *path, char **argv)
   pagetable_t pagetable = 0, oldpagetable;
   struct proc *p = myproc();
 
+//   printf("Hello\n");
   begin_op();
-//   pr_msg(0, "Exec: '%s' pid='%d'\n", path, p->pid);
+  pr_msg(0, "Exec");
 
   if((ip = namei(path)) == 0){
     end_op();

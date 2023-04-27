@@ -70,12 +70,13 @@ void pushback_fmt_str(const char *fmt, va_list va_list) {
 	int i = 0;
 	char c, *str;
 
-	while ((c = fmt[i] & 0xff) != 0) {
+	while ((c = fmt[i]) != '\0') {
 		if (c != '%') {
 			pushback_char(c);
+            ++i;
 			continue;
 		}
-		c = fmt[++i] & 0xff;
+		c = fmt[++i];
 		if (c == '\0')
 			break;
 		switch (c) {
@@ -145,21 +146,30 @@ uint64 sys_dmesg(void) {
 }
 
 void pr_msg(int t, const char *fmt, ...) {
+    // printf("here0\n");
 	acquire(&msg_lock);
 	if (t >= 0 && t < 4 && !flags[t]) {
 		release(&msg_lock);
 		return;
 	}
 
+    // printf("here1\n");
+
 	int cur_ticks = ticks;
 
 	va_list va_list;
 	va_start(va_list, fmt);
 
+    // printf("here2\n");
+
 	pushback_fmt_str(prefix, va_list);
+    // printf("here3\n");
 	pushback_int(cur_ticks, 10, 0);
+    // printf("here4\n");
 	pushback_fmt_str(postfix, va_list);
+    // printf("here5\n");
 	pushback_fmt_str(fmt, va_list);
+    // printf("here6\n");
 
 	va_end(va_list);
 
