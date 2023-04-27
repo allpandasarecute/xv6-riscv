@@ -17,7 +17,7 @@ static const char numerals[] = "0123456789abcdef";
 static char buf[BUF_SIZE];
 static struct spinlock msg_lock;
 static const char *prefix = "[", *postfix = "] ";
-static int flags[] = { 1, 1, 1, 1};
+static int flags[] = {1, 1, 1, 1};
 static int front = 0, top = 0, words = 0;
 
 void msg_init() {
@@ -68,7 +68,7 @@ static void pushback_int(int x, int base, int sign) {
 
 void pushback_fmt_str(const char *fmt, va_list va_list) {
 	int i = 0;
-    char c, *str;
+	char c, *str;
 
 	while ((c = fmt[i] & 0xff) != 0) {
 		if (c != '%') {
@@ -108,10 +108,10 @@ void pushback_fmt_str(const char *fmt, va_list va_list) {
 }
 
 void pushback_str(const char *str, int len) {
-    for (int i = 0; i < len; i++) {
-        buf[top++] = str[i];
-        top = (top + 1) % BUF_SIZE;
-    }
+	for (int i = 0; i < len; i++) {
+		buf[top++] = str[i];
+		top = (top + 1) % BUF_SIZE;
+	}
 }
 
 uint64 sys_dmesg(void) {
@@ -121,7 +121,7 @@ uint64 sys_dmesg(void) {
 	argaddr(0, &address);
 
 	if (front >= top) {
-        if (copyout(myproc()->pagetable, address, buf + front, sizeof(char) * (BUF_SIZE - front)) < 0) {
+		if (copyout(myproc()->pagetable, address, buf + front, sizeof(char) * (BUF_SIZE - front)) < 0) {
 			release(&msg_lock);
 			return -1;
 		}
@@ -146,14 +146,12 @@ uint64 sys_dmesg(void) {
 
 void pr_msg(int t, const char *fmt, ...) {
 	acquire(&msg_lock);
-    if (t >= 0 && t < 4 && !flags[t]) {
-        release(&msg_lock);
-        return;
-    }
-	acquire(&tickslock);
+	if (t >= 0 && t < 4 && !flags[t]) {
+		release(&msg_lock);
+		return;
+	}
 
 	int cur_ticks = ticks;
-	release(&tickslock);
 
 	va_list va_list;
 	va_start(va_list, fmt);
@@ -172,10 +170,10 @@ void pr_msg(int t, const char *fmt, ...) {
 }
 
 uint64 sys_flags(void) {
-    acquire(&msg_lock);
-    argint(0, &flags[1]);
-    argint(1, &flags[2]);
-    argint(2, &flags[3]);
-    release(&msg_lock);
-    return 0;
+	acquire(&msg_lock);
+	argint(0, &flags[1]);
+	argint(1, &flags[2]);
+	argint(2, &flags[3]);
+	release(&msg_lock);
+	return 0;
 }
