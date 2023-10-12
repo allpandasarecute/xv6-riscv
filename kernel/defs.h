@@ -189,5 +189,5 @@ void virtio_disk_intr(void);
 #define NELEM(x) (sizeof(x) / sizeof((x)[0]))
 
 // pr_msg.c
-void pr_msg(const char *str);
-void init_dmesg_buf();
+void pr_msg(char *fmt, ...);
+void init_kernel_dmesg_buf();

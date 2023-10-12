@@ -1,45 +1,38 @@
+#include <stdarg.h>
+
 #include "kernel/types.h"
 #include "kernel/riscv.h"
 #include "kernel/defs.h"
 #include "kernel/spinlock.h"
 #include "kernel/sleeplock.h"
+#include "kernel/pr_msg.h"
+#include "kernel/param.h"
+#include "kernel/proc.h"
 
-#define BUF_PAGES_SIZE 10
-#define BUF_BYTE_SIZE (BUF_PAGES_SIZE * PGSIZE)
-#define TICKS_BUF_SIZE 20
-
-struct {
-    char buf[BUF_BYTE_SIZE + 1];
-    int begin;
-    int end;
-    int entries_count;
-    struct spinlock lock;
-} dmesg_buf;
-
-void init_dmesg_buf() {
+void init_dmesg_buf(dmesg_buf_t *buf) {
     for (int i = 0; i < BUF_BYTE_SIZE; i++) {
-        dmesg_buf.buf[i] = '\0';
+        buf->entries.buf[i] = '\0';
     }
-    dmesg_buf.begin         = 0;
-    dmesg_buf.end           = BUF_BYTE_SIZE - 1;
-    dmesg_buf.entries_count = 0;
-    initlock(&dmesg_buf.lock, "dmesg lock");
+    buf->entries.begin = 0;
+    buf->entries.end   = BUF_BYTE_SIZE - 1;
+    buf->entries.count = 0;
+    initlock(&buf->lock, "dmesg lock");
 }
 
 int get_next_pos(int pos) {
     return (pos + 1) % BUF_BYTE_SIZE;
 }
 
-int get_end_of_msg(int pos) {
-    pos += strlen(dmesg_buf.buf + pos);
+int get_end_of_msg(int pos, dmesg_buf_t *buf) {
+    pos += strlen(buf->entries.buf + pos);
     if (pos == BUF_BYTE_SIZE) {
-        pos = strlen(dmesg_buf.buf);
+        pos = strlen(buf->entries.buf);
     }
     return pos;
 }
 
-int get_next_msg_pos(int pos) {
-    return get_next_pos(get_end_of_msg(pos));
+int get_next_msg_pos(int pos, dmesg_buf_t *buf) {
+    return get_next_pos(get_end_of_msg(pos, buf));
 }
 
 void print_char(char c) {
@@ -51,96 +44,95 @@ void print_char(char c) {
     printf("%s", buf);
 }
 
-int print_from_pos(int pos) {
-    int end_pos = get_end_of_msg(pos);
+int print_from_pos(int pos, dmesg_buf_t *buf) {
+    int end_pos = get_end_of_msg(pos, buf);
     for (; pos != end_pos; pos = get_next_pos(pos)) {
-        print_char(dmesg_buf.buf[pos]);
+        print_char(buf->entries.buf[pos]);
     }
-    if (pos != end_pos || dmesg_buf.buf[pos] != '\0')
+    if (pos != end_pos || buf->entries.buf[pos] != '\0')
         panic("dmesg: printing error");
     printf("\n");
     return end_pos;
 }
 
-void clear_range(int begin_pos, int end_pos) {
+void clear_range(int begin_pos, int end_pos, dmesg_buf_t *buf) {
     if (begin_pos < end_pos) {
-        memset(dmesg_buf.buf + begin_pos, 0, end_pos - begin_pos);
+        memset(buf->entries.buf + begin_pos, 0, end_pos - begin_pos);
     } else {
-        memset(dmesg_buf.buf + begin_pos, 0, BUF_BYTE_SIZE - begin_pos);
-        memset(dmesg_buf.buf, 0, end_pos);
+        memset(buf->entries.buf + begin_pos, 0, BUF_BYTE_SIZE - begin_pos);
+        memset(buf->entries.buf, 0, end_pos);
     }
-    dmesg_buf.entries_count--;
 }
 
-int check_free_space() {
-    if (dmesg_buf.entries_count == 0) {
+int check_free_space(dmesg_buf_t *buf) {
+    if (buf->entries.count == 0) {
         return BUF_BYTE_SIZE;
-    } else if (dmesg_buf.begin == dmesg_buf.end) {
-        panic("pr_msg: begin cannot be equal to end");
-    } else if (dmesg_buf.begin < dmesg_buf.end) {
-        return BUF_BYTE_SIZE - dmesg_buf.end - 1 + dmesg_buf.begin;
+    } else if (buf->entries.begin <= buf->entries.end) {
+        return BUF_BYTE_SIZE - buf->entries.end - 1 + buf->entries.begin;
     } else {
-        return dmesg_buf.begin - dmesg_buf.end;
+        return buf->entries.begin - buf->entries.end - 1;
     }
 }
 
-void alloc_in_buf(int len) {
-    if (len > BUF_BYTE_SIZE)
-        panic("pr_msg: too large message");
-    while (len > check_free_space()) {
-        int end_of_1st_msg = get_end_of_msg(dmesg_buf.begin);
-        clear_range(dmesg_buf.begin, end_of_1st_msg);
-        dmesg_buf.begin = get_next_pos(end_of_1st_msg);
-    }
+void delete_first_msg(dmesg_buf_t *buf) {
+    int end_of_1st_msg = get_end_of_msg(buf->entries.begin, buf);
+    clear_range(buf->entries.begin, end_of_1st_msg, buf);
+    buf->entries.begin = get_next_pos(end_of_1st_msg);
+    buf->entries.count--;
 }
 
-int put_in_pos(int pos, const char *str) {
-    for (;; str++, pos = get_next_pos(pos)) {
-        if (dmesg_buf.buf[pos] != '\0')
+int append_to_end(const char *str, dmesg_buf_t *buf) {
+    for (;; str++, buf->entries.end = get_next_pos(buf->entries.end)) {
+        if (check_free_space(buf) == 0) {
+            delete_first_msg(buf);
+            if (buf->entries.count == 0)
+                panic("pr_msg: too long message");
+        }
+        if (buf->entries.buf[buf->entries.end] != '\0')
             panic("pr_msg: write to uncleared space");
-        dmesg_buf.buf[pos] = *str;
+        buf->entries.buf[buf->entries.end] = *str;
         if (*str == '\0') {
-            dmesg_buf.end = pos;
             break;
         }
     }
-    return pos;
+    return buf->entries.end;
 }
 
-int put_in_end(const char *str) {
-    return put_in_pos(get_next_pos(dmesg_buf.end), str);
+int add_after_end(const char *str, dmesg_buf_t *buf) {
+    buf->entries.end = get_next_pos(buf->entries.end);
+    buf->entries.count++;
+    return append_to_end(str, buf);
 }
 
 // debug function
-void show_buf() {
-    char buf[2];
-    buf[1] = '\0';
-    printf("[%d %d] ", dmesg_buf.begin, dmesg_buf.end);
+void show_buf(dmesg_buf_t *buf) {
+    char b[2];
+    b[1] = '\0';
+    printf("[%d %d] ", buf->entries.begin, buf->entries.end);
     for (int i = 0; i < BUF_BYTE_SIZE; i++) {
-        if (dmesg_buf.buf[i] == '\0')
+        if (buf->entries.buf[i] == '\0')
             printf("#");
         else {
-            buf[0] = dmesg_buf.buf[i];
-            printf("%s", buf);
+            b[0] = buf->entries.buf[i];
+            printf("%s", b);
         }
     }
     printf("\n");
 }
 
-void pr_msg(const char *str);
+void pr_msg(char *fmt, ...);
 
-void show_dmesg_buf() {
-    pr_msg("dmesg showed");
-    acquire(&dmesg_buf.lock);
-    for (int i = dmesg_buf.begin; dmesg_buf.entries_count != 0; i++) {
-        i = print_from_pos(i);
-        if (i == dmesg_buf.end)
+void show_dmesg_buf(dmesg_buf_t *buf) {
+    acquire(&buf->lock);
+    for (int i = buf->entries.begin; buf->entries.count != 0; i++) {
+        i = print_from_pos(i, buf);
+        if (i == buf->entries.end)
             break;
     }
-    release(&dmesg_buf.lock);
+    release(&buf->lock);
 }
 
-char *get_ticks_str(char *ticks_buf) {
+static char *get_ticks_str(char *ticks_buf) {
     char *ticks_str = ticks_buf + TICKS_BUF_SIZE - 1;
     *ticks_str      = '\0';
     ticks_str--;
@@ -161,16 +153,128 @@ char *get_ticks_str(char *ticks_buf) {
     return ticks_str;
 }
 
+static void put_char_in_buf(char c, dmesg_buf_t *buf) {
+    char str[2];
+    str[0] = c;
+    str[1] = '\0';
+    append_to_end(str, buf);
+}
 
-void pr_msg(const char *str) {
-    if (str == 0)
-        return;
+static char digits[] = "0123456789abcdef";
+
+static void printint(int xx, int base, int sign, dmesg_buf_t *dmesg_buf) {
+    char buf[16];
+    int i;
+    uint x;
+
+    if (sign && (sign = xx < 0))
+        x = -xx;
+    else
+        x = xx;
+
+    i = 0;
+    do {
+        buf[i++] = digits[x % base];
+    } while ((x /= base) != 0);
+
+    if (sign)
+        buf[i++] = '-';
+
+    while (--i >= 0)
+        put_char_in_buf(buf[i], dmesg_buf);
+}
+
+static void printptr(uint64 x, dmesg_buf_t *buf) {
+    int i;
+    put_char_in_buf('0', buf);
+    put_char_in_buf('x', buf);
+    for (i = 0; i < (sizeof(uint64) * 2); i++, x <<= 4)
+        put_char_in_buf(digits[x >> (sizeof(uint64) * 8 - 4)], buf);
+}
+
+void pr_msg_to_buf(dmesg_buf_t *buf, char *fmt, va_list ap) {
+    if (fmt == 0)
+        panic("pr_msg: null fmt");
+
+    int i, c;
+    char *s;
+
+    acquire(&buf->lock);
     char ticks_buf[TICKS_BUF_SIZE];
     char *ticks_str = get_ticks_str(ticks_buf);
-    acquire(&dmesg_buf.lock);
-    alloc_in_buf(strlen(ticks_str) + strlen(str) + 1);
-    int pos = put_in_end(ticks_str);
-    pos     = put_in_pos(pos, str);
-    dmesg_buf.entries_count++;
-    release(&dmesg_buf.lock);
+    add_after_end(ticks_str, buf);
+
+
+    for (i = 0; (c = fmt[i] & 0xff) != 0; i++) {
+        if (c != '%') {
+            put_char_in_buf(c, buf);
+            continue;
+        }
+        c = fmt[++i] & 0xff;
+        if (c == 0)
+            break;
+        switch (c) {
+            case 'd':
+                printint(va_arg(ap, int), 10, 1, buf);
+                break;
+            case 'x':
+                printint(va_arg(ap, int), 16, 1, buf);
+                break;
+            case 'p':
+                printptr(va_arg(ap, uint64), buf);
+                break;
+            case 's':
+                if ((s = va_arg(ap, char *)) == 0)
+                    s = "(null)";
+                for (; *s; s++)
+                    put_char_in_buf(*s, buf);
+                break;
+            case '%':
+                put_char_in_buf('%', buf);
+                break;
+            default:
+                // Print unknown % sequence to draw attention.
+                put_char_in_buf('%', buf);
+                put_char_in_buf(c, buf);
+                break;
+        }
+    }
+
+    release(&buf->lock);
+}
+
+static dmesg_buf_t kernel_buf;
+
+void init_kernel_dmesg_buf() {
+    init_dmesg_buf(&kernel_buf);
+}
+
+void show_kernel_dmesg_buf() {
+    show_dmesg_buf(&kernel_buf);
+}
+
+static int counter = 0;
+
+void copyout_kernel_dmesg_buf_entries(uint64 ptr) {
+    counter++;
+    pr_msg(
+        "kernel dmesg buf copied %d(%x) times. %s %p", counter, counter,
+        "Now copy to", ptr
+    );
+    acquire(&kernel_buf.lock);
+    copyout(
+        myproc()->pagetable, ptr, (char *)&kernel_buf.entries,
+        sizeof kernel_buf.entries
+    );
+    release(&kernel_buf.lock);
+}
+
+
+
+// Print to the dmesg buffer. only understands %d, %x, %p, %s.
+void pr_msg(char *fmt, ...) {
+    va_list myargs;
+    va_start(myargs, fmt);
+    pr_msg_to_buf(&kernel_buf, fmt, myargs);
+    va_end(myargs);
 }
