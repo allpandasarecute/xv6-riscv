@@ -1,27 +1,15 @@
-#include "kernel/types.h"
-#include "user/user.h"
-
-#define NUMBER_SIZE 9
-#define BUFFER_SIZE (NUMBER_SIZE * 2 + 3) // space + \n + \0 from gets()
-
-inline uint isEOL(const char c) {
-	return (c == '\n' || c == '\r');
-}
-
-inline uint isDigit(const char c) {
-	return (c >= '0' && c <= '9');
-}
+#include "user/hw0_utils.h"
 
 uint parseInt(char *buffer, const uint start, int *num, const uint count) {
 	uint i;
 
-	for (i = start; i < BUFFER_SIZE && i < start + NUMBER_SIZE; ++i) {
+	for (i = start; i < BUFFER_SIZE; ++i) {
 		if (!((i == start && buffer[i] == '-') || isDigit(buffer[i]))) {
 			break;
 		}
 	}
 
-	if (i < BUFFER_SIZE && !(buffer[start] == '-' && i == start + 1) &&
+	if (i < BUFFER_SIZE && !(buffer[start] == '-' && i == start + 1) && i != start &&
 		((count == 1 && buffer[i] == ' ') || (count == 2 && isEOL(buffer[i])))) {
 		buffer[i] = '\0'; // better would be to make another buffer for number and
 						  // this buffer const, but I think this is ok
@@ -32,6 +20,15 @@ uint parseInt(char *buffer, const uint start, int *num, const uint count) {
 		}
 		return i + 1;
 	} else {
+		uint isFullLine = 0;
+		for (; i < BUFFER_SIZE; ++i) {
+			if (isEOL(buffer[i])) {
+				isFullLine = 1;
+			}
+		}
+		if (!isFullLine) {
+			readToEnd();
+		}
 		fprintf(2, "Wrong input format\n");
 		exit(1);
 	}
